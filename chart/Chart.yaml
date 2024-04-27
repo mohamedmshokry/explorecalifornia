@@ -1,0 +1,5 @@
+apiVersion: v2
+name: explore-california-website
+version: 1.0.0
+deprecated: false
+appVersion: 1.0.0

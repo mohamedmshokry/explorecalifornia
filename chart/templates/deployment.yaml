@@ -1,0 +1,25 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: {{ .Values.appName }}
+  name: {{ .Values.appName }}
+spec:
+  replicas: {{ .Values.replicas }}
+  selector:
+    matchLabels:
+      app: {{ .Values.appName }}
+  strategy: {}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.appName }}
+    spec:
+      imagePullSecrets:
+        - name: {{ .Values.imagePullSecretName }}
+      containers:
+      - image: {{ .Values.imageName }}
+        name: {{ .Values.appName }}-{{ randAlpha 10 | lower }}
+        ports:
+          - containerPort: 80
+        resources: {}
