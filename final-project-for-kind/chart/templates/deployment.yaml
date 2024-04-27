@@ -15,11 +15,8 @@ spec:
       labels:
         app: {{ .Values.appName }}
     spec:
-      imagePullSecrets:
-        - name: {{ .Values.imagePullSecretName }}
       containers:
       - image: {{ .Values.imageName }}
-        name: {{ .Values.appName }}-{{ randAlpha 10 | lower }}
+        name: {{ .Values.appName }}
         ports:
           - containerPort: 80
-        resources: {}

@@ -2,19 +2,21 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   labels:
-    app: explorecalifornia.com
-  name: explorecalifornia.com
+    app: {{ .Values.appName }}
+  name: {{ .Values.appName }}
 spec:
-  replicas: 1
+  replicas: {{ .Values.replicas }}
   selector:
     matchLabels:
-      app: explorecalifornia.com
+      app: {{ .Values.appName }}
+  strategy: {}
   template:
     metadata:
-      creationTimestamp: null
       labels:
-        app: explorecalifornia.com
+        app: {{ .Values.appName }}
     spec:
       containers:
-      - image: localhost:5000/explorecalifornia.com
-        name: explorecalifornia-com-zpbn7
+      - image: {{ .Values.imageName }}
+        name: {{ .Values.appName }}
+        ports:
+          - containerPort: 80

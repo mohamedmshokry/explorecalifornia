@@ -1,15 +1,16 @@
 apiVersion: v1
 kind: Service
 metadata:
+  creationTimestamp: null
   labels:
-    app: explorecalifornia.com
-  name: explorecalifornia-svc
+    app: {{ .Values.appName }}
+  name: {{ .Values.serviceName }}
 spec:
   ports:
-  - name: 80-80
-    port: 80
+  - name: http
+    port: {{ .Values.servicePort }}
     protocol: TCP
     targetPort: 80
   selector:
-    app: explorecalifornia.com
+    app: {{ .Values.appName }}
   type: ClusterIP

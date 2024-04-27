@@ -14,5 +14,3 @@ spec:
   selector:
     app: {{ .Values.appName }}
   type: ClusterIP
-status:
-  loadBalancer: {}

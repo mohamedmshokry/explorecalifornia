@@ -18,7 +18,7 @@ Steps may be long so be patient
     And add your user as passwordless sudoer, make sure to replace $USER with your actual used username
     ```bash
     sudo vim /etc/sudoers.d/${USER}_user # And add the below line
-    $USER All=(ALL) NOPASSWD: ALL
+    $USER  ALL=(ALL) NOPASSWD: ALL
     ```
 
 * (Option) To play nice you can configure static IPs for the VM using netplan: https://www.linuxtechi.com/static-ip-address-on-ubuntu-server/
@@ -70,44 +70,71 @@ Steps may be long so be patient
     sudo apt install -y build-essential
     ```
 * The website used for this deployment is a simple website based on Nginx
+* In case you've landed directly to this page, clone the repo that has the file needed for this walkthrough
+    ```bash
+    git clone https://github.com/mohamedmshokry/explorecalifornia.git
+    cd explorecalifornia/starting-pack
+    ```
 * Let's start by building the image and testing if the docker image build successfully, can run and we can access it. Let's build the image
     ```bash
     docker build -t explorecalifornia-image .
     ```
+    When listing docker images you should see the image present
+    ```bash
+    $ docker images
+    REPOSITORY                TAG       IMAGE ID       CREATED          SIZE
+    explorecalifornia-image   latest    beaf259abb6d   41 seconds ago   65.1MB
+    ```
 * Test the image by running a container
     ```bash
-    docker run --rm --name explorecalifornia -p 8000:80
+    docker run --rm --name explorecalifornia -p 8000:80 -d explorecalifornia-image
     ```
-* Since we are running this container in a VM we need to do SSH tunel to be able to access the VM on port 80. (Will leave it for you with a hint: https://www.tecmint.com/create-ssh-tunneling-port-forwarding-in-linux/)
+    To check if the container is running Ok with no issues
+    ```bash
+    $ docker ps 
+    CONTAINER ID   IMAGE                     COMMAND                  CREATED          STATUS          PORTS                                   NAMES
+    e0c0bdb0871d   explorecalifornia-image   "/docker-entrypoint.…"   17 seconds ago   Up 16 seconds   0.0.0.0:8000->80/tcp, :::8000->80/tcp   explorecalifornia
+    ```
+* Since we are running this container in a VM we need to do SSH tunel to be able to access the VM on port 80. ( Will leave it for you with a hint: https://www.tecmint.com/create-ssh-tunneling-port-forwarding-in-linux/ )
 * Let's start creating out Makefile, first rules we will do will be what we just did by building and testing running container
     ```make
     vim Makefile # And add the below lines to it
     #!/usr/bin/env make
 
     run_website:
-	    docker build -t explorecalifornia.com . && \
-		    docker run -p 5000:80 -d --name explorecalifornia.com --rm explorecalifornia.com
+	    docker build -t explorecalifornia-img . && \
+		    docker run -p 5000:80 -d --name explorecalifornia --rm explorecalifornia-img
     ```
     If we just create it like this it will create a file named run_website and for the second run it will require a deletion, Since we are not using Make for building a real artifacts and just for being single automation tool we will have to make this target as a PHONY target, and also all out next targets. This can be done by adding ".PHONY: run_website" to the start of the Makefile, so new Makefile will be like:
+
+    Let's add additional rule to cleanup container from previous trial if existing
 
     ```make
     #!/usr/bin/env make
 
-    .PHONY: run_website
+    .PHONY: clean_containers run_website
+
+    clean_containers:
+	    docker rm -f $$(docker ps -a -q)
 
     run_website:
 	    docker build -t explorecalifornia-image . && \
 		    docker run --rm -p 8000:80 -d --name explorecalifornia explorecalifornia-image
     ```
-    * Now let's test by running this Makefile and see what we have
-        ```bash
-        make run_website
-        ```
-    * Let's add another make rule to stop the website
+    
+* Now let's test by running this Makefile and see what we have
+    ```bash
+    make run_website
+    ```
+
+* Let's add another make rule to stop the website
     ``` make
     #!/usr/bin/env make
 
-    .PHONY: run_website stop_website
+    .PHONY: clean_containers run_website stop_website
+
+    clean_containers:
+	    docker rm -f $$(docker ps -a -q)
 
     run_website:
 	    docker build -t explorecalifornia-image . && \
@@ -115,6 +142,11 @@ Steps may be long so be patient
     
     stop_website:
         docker stop explorecalifornia
+    ```
+
+    Stop the container to let the playground clean for what is next
+    ```bash
+    make stop_website
     ```
 > Let's do all next steps inside the Makefile using ruels and takeing care dependent targets
 
@@ -123,7 +155,10 @@ But we will do that through the Makefile
     ```make
     #!/usr/bin/env make
 
-    .PHONY: run_website stop_website install_kind
+    .PHONY: clean_containers run_website stop_website install_kind
+
+    clean_containers:
+	    docker rm -f $$(docker ps -a -q)
 
     run_website:
 	    docker build -t explorecalifornia-image . && \
@@ -137,12 +172,56 @@ But we will do that through the Makefile
 	    chmod +x ./kind && \
 		    sudo mv ./kind /usr/local/bin/kind
     ```
-* Before we create a KIND cluster we will need to have kubectl command installed to be able interact with the KIND cluster so let's a new rule to install kubectl on Ubuntu 22.04. There are multiple ways we can go for the official one: https://kubernetes.io/docs/tasks/tools/install-kubectl-linux/ 
+
+    To inatall KIND using make
+    ```bash
+    $ make install_kind
+    curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.22.0/kind-linux-amd64; \
+    chmod +x ./kind && \
+            sudo mv ./kind /usr/local/bin/kind
+      % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                     Dload  Upload   Total   Spent    Left  Speed
+    100    97  100    97    0     0    205      0 --:--:-- --:--:-- --:--:--   205
+      0     0    0     0    0     0      0      0 --:--:--  0:00:01 --:--:--     0
+    100 6245k  100 6245k    0     0  2060k      0  0:00:03  0:00:03 --:--:-- 5144k
+    ```
+    Check if KIND got successfully installed
+    ```bash
+    $ kind --help
+    kind creates and manages local Kubernetes clusters using Docker container 'nodes'
+
+    Usage:
+      kind [command]
+
+    Available Commands:
+      build       Build one of [node-image]
+      completion  Output shell completion code for the specified shell (bash, zsh or fish)
+      create      Creates one of [cluster]
+      delete      Deletes one of [cluster]
+      export      Exports one of [kubeconfig, logs]
+      get         Gets one of [clusters, nodes, kubeconfig]
+      help        Help about any command
+      load        Loads images into nodes
+      version     Prints the kind CLI version
+
+    Flags:
+      -h, --help              help for kind
+          --loglevel string   DEPRECATED: see -v instead
+      -q, --quiet             silence all stderr output
+      -v, --verbosity int32   info log verbosity, higher value produces more output
+          --version           version for kind
+
+    Use "kind [command] --help" for more information about a command.
+    ```
+* Before we create a KIND cluster we will need to have kubectl command installed to be able interact with the KIND cluster so let's a new rule to install kubectl on Ubuntu 22.04. There are multiple ways we can go for the easiest one using snap
 Now the Makefile will be like
     ```make
     #!/usr/bin/env make
 
-    .PHONY: run_website stop_website install_kind install_kubectl
+    .PHONY: clean_containers run_website stop_website install_kind install_kubectl
+
+    clean_containers:
+	    docker rm -f $$(docker ps -a -q)
 
     run_website:
 	    docker build -t explorecalifornia-image . && \
@@ -157,20 +236,16 @@ Now the Makefile will be like
 		    sudo mv ./kind /usr/local/bin/kind
 
     install_kubectl:
-	    curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.30/deb/Release.key | sudo gpg --dearmor --yes -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg; \
-        sudo chmod 644 /etc/apt/keyrings/kubernetes-apt-keyring.gpg; \
-	    echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.30/deb/ /' | sudo tee /etc/apt/sources.list.d/kubernetes.list; \
-        sudo chmod 644 /etc/apt/sources.list.d/kubernetes.list; \
-	    sudo apt update && \
-		    sudo apt install -y kubectl; \
-	    sudo cp -v /usr/bin/kubectl /usr/local/bin/kubectl
+	    sudo snap install kubectl --classic
     ```
 * Now let's add a rule to create KIND cluster
     ```make
     #!/usr/bin/env make
 
-    .PHONY: run_website stop_website install_kind install_kubectl \
-            create_kind_cluster
+    .PHONY: clean_containers run_website stop_website install_kind install_kubectl create_kind_cluster
+
+    clean_containers:
+	    docker rm -f $$(docker ps -a -q)
 
     run_website:
 	    docker build -t explorecalifornia-image . && \
@@ -185,17 +260,49 @@ Now the Makefile will be like
 		    sudo mv ./kind /usr/local/bin/kind
 
     install_kubectl:
-	    curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.30/deb/Release.key | sudo gpg --dearmor --yes -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg; \
-        sudo chmod 644 /etc/apt/keyrings/kubernetes-apt-keyring.gpg; \
-	    echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.30/deb/ /' | sudo tee /etc/apt/sources.list.d/kubernetes.list; \
-        sudo chmod 644 /etc/apt/sources.list.d/kubernetes.list; \
-	    sudo apt update && \
-		    sudo apt install -y kubectl; \
-	    sudo cp -v /usr/bin/kubectl /usr/local/bin/kubectl
+	    sudo snap install kubectl --classic
 
     create_kind_cluster:
         kind create cluster --name explorecalifornia-cluster && \
             kubectl get nodes
+    ```
+
+    You should get output similar to below one
+    ```bash
+    $ make create_kind_cluster 
+    kind create cluster --name explorecalifornia-cluster && \
+            kubectl get nodes
+    Creating cluster "explorecalifornia-cluster" ...
+     ✓ Ensuring node image (kindest/node:v1.29.2) 🖼 
+     ✓ Preparing nodes 📦  
+     ✓ Writing configuration 📜 
+     ✓ Starting control-plane 🕹️ 
+     ✓ Installing CNI 🔌 
+     ✓ Installing StorageClass 💾 
+    Set kubectl context to "kind-explorecalifornia-cluster"
+    You can now use your cluster with:
+
+    kubectl cluster-info --context kind-explorecalifornia-cluster
+
+    Thanks for using kind! 😊
+    NAME                                      STATUS     ROLES           AGE   VERSION
+    explorecalifornia-cluster-control-plane   NotReady   control-plane   13s   v1.29.2
+    ```
+    Verify that cluster node is ready and system pods are Ok
+    ```bash
+    $ kubectl get no -o wide
+    NAME                                      STATUS   ROLES           AGE   VERSION   INTERNAL-IP   EXTERNAL-IP   OS-IMAGE                         KERNEL-VERSION      CONTAINER-RUNTIME
+    explorecalifornia-cluster-control-plane   Ready    control-plane   86s   v1.29.2   172.18.0.2    <none>        Debian GNU/Linux 12 (bookworm)   5.15.0-30-generic   containerd://1.7.13
+    $ kubectl get po -o wide -n kube-system
+    NAME                                                              READY   STATUS    RESTARTS   AGE   IP           NODE                                      NOMINATED NODE   READINESS GATES
+    coredns-76f75df574-fx62d                                          1/1     Running   0          79s   10.244.0.4   explorecalifornia-cluster-control-plane   <none>           <none>
+    coredns-76f75df574-g5bd7                                          1/1     Running   0          79s   10.244.0.2   explorecalifornia-cluster-control-plane   <none>           <none>
+    etcd-explorecalifornia-cluster-control-plane                      1/1     Running   0          90s   172.18.0.2   explorecalifornia-cluster-control-plane   <none>           <none>
+    kindnet-26vlw                                                     1/1     Running   0          79s   172.18.0.2   explorecalifornia-cluster-control-plane   <none>           <none>
+    kube-apiserver-explorecalifornia-cluster-control-plane            1/1     Running   0          90s   172.18.0.2   explorecalifornia-cluster-control-plane   <none>           <none>
+    kube-controller-manager-explorecalifornia-cluster-control-plane   1/1     Running   0          92s   172.18.0.2   explorecalifornia-cluster-control-plane   <none>           <none>
+    kube-proxy-9zq84                                                  1/1     Running   0          79s   172.18.0.2   explorecalifornia-cluster-control-plane   <none>           <none>
+    kube-scheduler-explorecalifornia-cluster-control-plane            1/1     Running   0          96s   172.18.0.2   explorecalifornia-cluster-control-plane   <none>           <none>
     ```
 * Since we will be building our own application, let's mimic what happens in enterprises. They host thier SW in private registry so we are going to use the simplest one and create a private docker registry. Let's test the creation and how it works using docker commands first
     ```bash
@@ -203,14 +310,18 @@ Now the Makefile will be like
     ```
     To verify it is running and ready to host repos and images let;s query it
     ```bash
-    curl -L http://localhost:5000/v2
+    $ curl -L http://localhost:5000/v2
+    {}
     ```
 * Let's Add make rule to create docker registry. We are checking if it is created before creating the registry to avoid errors
     ```make
     #!/usr/bin/env make
 
-    .PHONY: run_website stop_website install_kind install_kubectl \
-            create_kind_cluster create_docker_registry
+    .PHONY: clean_containers run_website stop_website install_kind install_kubectl create_kind_cluster \
+            create_docker_registry
+
+    clean_containers:
+	    docker rm -f $$(docker ps -a -q)
 
     run_website:
 	    docker build -t explorecalifornia-image . && \
@@ -225,13 +336,7 @@ Now the Makefile will be like
 		    sudo mv ./kind /usr/local/bin/kind
 
     install_kubectl:
-	    curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.30/deb/Release.key | sudo gpg --dearmor --yes -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg; \
-        sudo chmod 644 /etc/apt/keyrings/kubernetes-apt-keyring.gpg; \
-	    echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.30/deb/ /' | sudo tee /etc/apt/sources.list.d/kubernetes.list; \
-        sudo chmod 644 /etc/apt/sources.list.d/kubernetes.list; \
-	    sudo apt update && \
-		    sudo apt install -y kubectl; \
-	    sudo cp -v /usr/bin/kubectl /usr/local/bin/kubectl
+	    sudo snap install kubectl --classic
 
     create_kind_cluster:
         kind create cluster --name explorecalifornia-cluster && \
@@ -244,14 +349,14 @@ Now the Makefile will be like
 	    fi
     ```
 
-* At this stage we have a KIND cluster and a private docker registry but KIND don't know anything about the registry we created. we need to link KIND to the docker registry. we ill make use of KIND configuration file to do this. More options for KIND config file are here: https://kind.sigs.k8s.io/docs/user/quick-start/#advanced
+* At this stage we have a KIND cluster and a private docker registry but KIND don't know anything about the registry we created. we need to link KIND to the docker registry. we will make use of KIND configuration file to do this. More options for KIND config file are here: https://kind.sigs.k8s.io/docs/user/quick-start/#advanced
 * KIND is using containerd as a CRI and we simpy need to tell containerd to use local registry for searching about images
     ```ini
       [plugins."io.containerd.grpc.v1.cri".registry.mirrors."localhost:5000"]
         endpoint = ["http://local-registry:5000"]
     ```
 
-* Let's do this configs inside KIND config yaml file
+* Let's do this configs inside KIND config yaml 'kind_config.yaml' file
     ```yaml
     kind: Cluster
     apiVersion: kind.x-k8s.io/v1alpha4
@@ -275,7 +380,7 @@ Now the Makefile will be like
         hostPort: 443
         protocol: TCP
     ```
-* Next we have to need to tell KIND that we are using a local registry by creating a simple configMap as below
+* Next we have to need to tell KIND that we are using a local registry by creating a simple configMap 'kind_configmap.yaml' as below
     ```yaml
     apiVersion: v1
     kind: ConfigMap
@@ -290,11 +395,13 @@ Now the Makefile will be like
 
 * Now to change the KIND InitConfiguration we need to delete and recreate the cluster so let's do that in Makefile
     ```make
-    #!/usr/bin/env make
+     #!/usr/bin/env make
 
-    .PHONY: run_website stop_website install_kind install_kubectl \
-            create_kind_cluster create_docker_registry create_kind_cluster \
+    .PHONY: clean_containers run_website stop_website install_kind install_kubectl create_kind_cluster \
+            create_docker_registry
 
+    clean_containers:
+	    docker rm -f $$(docker ps -a -q)
 
     run_website:
 	    docker build -t explorecalifornia-image . && \
@@ -309,17 +416,7 @@ Now the Makefile will be like
 		    sudo mv ./kind /usr/local/bin/kind
 
     install_kubectl:
-	    curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.30/deb/Release.key | sudo gpg --dearmor --yes -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg; \
-        sudo chmod 644 /etc/apt/keyrings/kubernetes-apt-keyring.gpg; \
-	    echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.30/deb/ /' | sudo tee /etc/apt/sources.list.d/kubernetes.list; \
-        sudo chmod 644 /etc/apt/sources.list.d/kubernetes.list; \
-	    sudo apt update && \
-		    sudo apt install -y kubectl; \
-	    sudo cp -v /usr/bin/kubectl /usr/local/bin/kubectl
-
-    create_kind_cluster:
-        kind create cluster --name explorecalifornia-cluster && \
-            kubectl get nodes
+	    sudo snap install kubectl --classic
 
     create_docker_registry:
 	    if ! docker ps | grep -q 'local-registry'; \
@@ -332,14 +429,76 @@ Now the Makefile will be like
 	    kubectl get nodes
     ```
 
-* What we have done so far is just letting KIND know about the private registry, but we still need to make the docker registry container be able to connect to KIND created container for the cluster. Let's do that also through Makefile
-    ```make
-    #!/usr/bin/env make
+    To Test the rule remove the current KIND cluster first then apply using make
+    ```bash
+    $ kind get clusters
+    explorecalifornia-cluster
 
-    .PHONY: run_website stop_website install_kind install_kubectl \
-            create_kind_cluster create_docker_registry create_kind_cluster \
-            create_kind_cluster_with_registry connect_registry_to_kind_network \
-            connect_registry_to_kind 
+    kind delete cluster -n explorecalifornia-cluster
+
+    $ make create_kind_cluster
+    curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.22.0/kind-linux-amd64; \
+    chmod +x ./kind && \
+            sudo mv ./kind /usr/local/bin/kind
+      % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                     Dload  Upload   Total   Spent    Left  Speed
+    100    97  100    97    0     0    235      0 --:--:-- --:--:-- --:--:--   235
+      0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+    100 6245k  100 6245k    0     0  2293k      0  0:00:02  0:00:02 --:--:-- 5008k
+    sudo snap install kubectl --classic
+    snap "kubectl" is already installed, see 'snap help refresh'
+    if ! docker ps | grep -q 'local-registry'; \
+        then docker run -d -p 5000:5000 --name local-registry --restart=always registry:2; \
+        else echo "---> local-registry is already running. There's nothing to do here."; \
+        fi
+    ---> local-registry is already running. There's nothing to do here.
+    kind create cluster --image=kindest/node:v1.21.12 --name explorecalifornia.com --config ./kind_config.yaml || true
+    Creating cluster "explorecalifornia.com" ...
+     ✓ Ensuring node image (kindest/node:v1.21.12) 🖼 
+     ✓ Preparing nodes 📦  
+     ✓ Writing configuration 📜 
+     ✓ Starting control-plane 🕹️ 
+     ✓ Installing CNI 🔌 
+     ✓ Installing StorageClass 💾 
+    Set kubectl context to "kind-explorecalifornia.com"
+    You can now use your cluster with:
+
+    kubectl cluster-info --context kind-explorecalifornia.com
+
+    Have a nice day! 👋
+    kubectl get nodes
+    NAME                                  STATUS     ROLES                  AGE   VERSION
+    explorecalifornia.com-control-plane   NotReady   control-plane,master   13s   v1.21.12
+    ```
+
+* What we have done so far is just letting KIND know about the private registry, but we still need to make the docker registry container be able to connect to KIND created container for the cluster. Let's do that also through Makefile
+    
+    The idea is simple we need to connect both KIND container and local-registry cotainer to the same docker network
+
+    If we listed current docker network we can see KIND created a separate docker network named 'kind' and this is where we are going to connect the local-registry container
+    ```bash
+    $ docker network list
+    NETWORK ID     NAME      DRIVER    SCOPE
+    be62983199fb   bridge    bridge    local
+    e2c5964a42e2   host      host      local
+    f341656ca8eb   kind      bridge    local
+    2d85e960f208   none      null      local
+    ```
+
+    Let's add a new rules 
+    * connect_registry_to_kind_network: To connect both container to same network  
+    * connect_registry_to_kind: to apply local-registry usage configMap
+    * create_kind_cluster_with_registry: a new simple rule to create a KIND cluster with local-registry connected to it
+
+    ```make
+     #!/usr/bin/env make
+
+    .PHONY: clean_containers run_website stop_website install_kind install_kubectl create_kind_cluster \
+            create_docker_registry connect_registry_to_kind_network  connect_registry_to_kind \
+            create_kind_cluster_with_registry
+
+    clean_containers:
+	    docker rm -f $$(docker ps -a -q)
 
     run_website:
 	    docker build -t explorecalifornia-image . && \
@@ -354,17 +513,7 @@ Now the Makefile will be like
 		    sudo mv ./kind /usr/local/bin/kind
 
     install_kubectl:
-	    curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.30/deb/Release.key | sudo gpg --dearmor --yes -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg; \
-        sudo chmod 644 /etc/apt/keyrings/kubernetes-apt-keyring.gpg; \
-	    echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.30/deb/ /' | sudo tee /etc/apt/sources.list.d/kubernetes.list; \
-        sudo chmod 644 /etc/apt/sources.list.d/kubernetes.list; \
-	    sudo apt update && \
-		    sudo apt install -y kubectl; \
-	    sudo cp -v /usr/bin/kubectl /usr/local/bin/kubectl
-
-    create_kind_cluster:
-        kind create cluster --name explorecalifornia-cluster && \
-            kubectl get nodes
+	    sudo snap install kubectl --classic
 
     create_docker_registry:
 	    if ! docker ps | grep -q 'local-registry'; \
@@ -389,13 +538,15 @@ Now the Makefile will be like
 
 * To test the what we did we will need to delete KIND cluster so let's do that using Makfile. To cleanup we will need to delete docker private registry created also so let's add this deleteion make rule
     ```make
-    #!/usr/bin/env make
+     #!/usr/bin/env make
 
-    .PHONY: run_website stop_website install_kind install_kubectl \
-            create_kind_cluster create_docker_registry create_kind_cluster \
-            create_kind_cluster_with_registry connect_registry_to_kind_network \
-            connect_registry_to_kind delete_kind_cluster delete_docker_registry \
+    .PHONY: clean_containers run_website stop_website install_kind install_kubectl create_kind_cluster \
+            create_docker_registry connect_registry_to_kind_network  connect_registry_to_kind \
+            create_kind_cluster_with_registry delete_kind_cluster delete_docker_registry \
 
+
+    clean_containers:
+	    docker rm -f $$(docker ps -a -q)
 
     run_website:
 	    docker build -t explorecalifornia-image . && \
@@ -410,17 +561,7 @@ Now the Makefile will be like
 		    sudo mv ./kind /usr/local/bin/kind
 
     install_kubectl:
-	    curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.30/deb/Release.key | sudo gpg --dearmor --yes -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg; \
-        sudo chmod 644 /etc/apt/keyrings/kubernetes-apt-keyring.gpg; \
-	    echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.30/deb/ /' | sudo tee /etc/apt/sources.list.d/kubernetes.list; \
-        sudo chmod 644 /etc/apt/sources.list.d/kubernetes.list; \
-	    sudo apt update && \
-		    sudo apt install -y kubectl; \
-	    sudo cp -v /usr/bin/kubectl /usr/local/bin/kubectl
-
-    create_kind_cluster:
-        kind create cluster --name explorecalifornia-cluster && \
-            kubectl get nodes
+	    sudo snap install kubectl --classic
 
     create_docker_registry:
 	    if ! docker ps | grep -q 'local-registry'; \
@@ -448,15 +589,84 @@ Now the Makefile will be like
 	    docker stop local-registry && docker rm local-registry
     ```
 
-* Let's start creating our first deployment. we will make use of the dry-run=client paramters to help us generate the YAML manifest of the deployment
+    Let's Test the new rules:
     ```bash
-    kubectl create deployment --dry-run=client --image localhost:5000/explorecalifornia-image explorecalifornia-dep --output=yaml > deployment.yaml
+    $ make delete_kind_cluster
+    docker stop local-registry && docker rm local-registry
+    local-registry
+    local-registry
+    kind delete cluster --name explorecalifornia.com
+    Deleting cluster "explorecalifornia.com" ...
+    Deleted nodes: ["explorecalifornia.com-control-plane"]
+
+    $ make create_kind_cluster_with_registry
+    make create_kind_cluster && make connect_registry_to_kind
+    make[1]: Entering directory '/home/shokry/explorecalifornia/starting-pack'
+    curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.22.0/kind-linux-amd64; \
+    chmod +x ./kind && \
+            sudo mv ./kind /usr/local/bin/kind
+      % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                     Dload  Upload   Total   Spent    Left  Speed
+    100    97  100    97    0     0    180      0 --:--:-- --:--:-- --:--:--   179
+      0     0    0     0    0     0      0      0 --:--:--  0:00:01 --:--:--     0
+    100 6245k  100 6245k    0     0  2247k      0  0:00:02  0:00:02 --:--:-- 5276k
+    sudo snap install kubectl --classic
+    snap "kubectl" is already installed, see 'snap help refresh'
+    if ! docker ps | grep -q 'local-registry'; \
+        then docker run -d -p 5000:5000 --name local-registry --restart=always registry:2; \
+        else echo "---> local-registry is already running. There's nothing to do here."; \
+        fi
+    b09154cf0f2f63d362fbe6167327e4f42cc25e28aeb0649205eb6fcc6d588f78
+    kind create cluster --image=kindest/node:v1.21.12 --name explorecalifornia.com --config ./kind_config.yaml || true
+    Creating cluster "explorecalifornia.com" ...
+     ✓ Ensuring node image (kindest/node:v1.21.12) 🖼
+     ✓ Preparing nodes 📦  
+     ✓ Writing configuration 📜 
+     ✓ Starting control-plane 🕹️ 
+     ✓ Installing CNI 🔌 
+     ✓ Installing StorageClass 💾 
+    Set kubectl context to "kind-explorecalifornia.com"
+    You can now use your cluster with:
+
+    kubectl cluster-info --context kind-explorecalifornia.com
+
+    Thanks for using kind! 😊
+    kubectl get nodes
+    NAME                                  STATUS     ROLES                  AGE   VERSION
+    explorecalifornia.com-control-plane   NotReady   control-plane,master   14s   v1.21.12
+    make[1]: Leaving directory '/home/shokry/explorecalifornia/starting-pack'
+    make[1]: Entering directory '/home/shokry/explorecalifornia/starting-pack'
+    docker network connect kind local-registry || true;
+    kubectl apply -f ./kind_configmap.yaml;
+    configmap/local-registry-hosting created
+    make[1]: Leaving directory '/home/shokry/explorecalifornia/starting-pack'
+
+    $ kind get clusters
+    explorecalifornia.com
+    $ kubectl get no -o wide
+    NAME                                  STATUS   ROLES                  AGE   VERSION    INTERNAL-IP   EXTERNAL-IP   OS-IMAGE       KERNEL-VERSION      CONTAINER-RUNTIME
+    explorecalifornia.com-control-plane   Ready    control-plane,master   71s   v1.21.12   172.18.0.2    <none>        Ubuntu 21.10   5.15.0-30-generic   containerd://1.6.4
+    $ kubectl get po -o wide -n kube-system
+    NAME                                                          READY   STATUS    RESTARTS   AGE   IP           NODE                                  NOMINATED NODE   READINESS GATES
+    coredns-558bd4d5db-cmcxr                                      1/1     Running   0          63s   10.244.0.2   explorecalifornia.com-control-plane   <none>           <none>
+    coredns-558bd4d5db-g8dtz                                      1/1     Running   0          63s   10.244.0.4   explorecalifornia.com-control-plane   <none>           <none>
+    etcd-explorecalifornia.com-control-plane                      1/1     Running   0          81s   172.18.0.2   explorecalifornia.com-control-plane   <none>           <none>
+    kindnet-bnhhw                                                 1/1     Running   0          63s   172.18.0.2   explorecalifornia.com-control-plane   <none>           <none>
+    kube-apiserver-explorecalifornia.com-control-plane            1/1     Running   0          76s   172.18.0.2   explorecalifornia.com-control-plane   <none>           <none>
+    kube-controller-manager-explorecalifornia.com-control-plane   1/1     Running   0          80s   172.18.0.2   explorecalifornia.com-control-plane   <none>           <none>
+    kube-proxy-hlcds                                              1/1     Running   0          63s   172.18.0.2   explorecalifornia.com-control-plane   <none>           <none>
+    kube-scheduler-explorecalifornia.com-control-plane            1/1     Running   0          78s   172.18.0.2   explorecalifornia.com-control-plane   <none>           <none>
+    ```
+
+* Let's start creating our first deployment. we will make use of the ```dry-run=client``` paramters to help us generate the YAML manifest of the deployment
+    ```bash
+    kubectl create deployment --dry-run=client --image localhost:5000/explorecalifornia-img explorecalifornia-dep --output=yaml > deployment.yaml
     ```
 
 * Before creating the deployment we need to add the explorecalifornia image to the local registry so that deployment can pull it when it is started
     ```bash
-    docker tag explorecalifornia-image localhost:5000/explorecalifornia-image
-    docker push localhost:5000/explorecalifornia-image
+    docker tag explorecalifornia-img localhost:5000/explorecalifornia-img
+    docker push localhost:5000/explorecalifornia-img
     ```
 * Let's try creating the deployment
     ```bash
@@ -468,10 +678,16 @@ Now the Makefile will be like
     kubectl port-forward deployment/explorecalifornia-dep 8080:80
     ```
     Then try to access it from your laptop browser
-* Now we have only access to the website from only Kubernetes cluster network to enable access from outside we need two resources to be created: Service and Ingress
+* Now we have only access to the website from only Kubernetes cluster network to enable access from outside we need two resources to be created: 
+    * Kubernetes Service resource 
+    * Kubernetes Ingress resource
 * Let's create the service to enable fixed clusterIP access and traffic distribution when we scale
     ```bash
     kubectl create service clusterip --dry-run=client --tcp=80:80 explorecalifornia-dep --output=yaml > service.yaml
+    ```
+* Check the service yaml file and cleanup unneeded parameters. Modify the service name from ```explorecalifornia-dep``` to ```explorecalifornia-svc``` then apply it
+    ```bash
+    kubectl apply -f service.yaml
     ```
 * Let's verify we can access if we exposed the service instead of the deployment
     ```bash
@@ -520,6 +736,13 @@ Now the Makefile will be like
           node-labels: "ingress-ready=true"
     ```
     > If you noticed this was already present in the KIND config files we used before to create the KIND cluster
+
+* What is still missing the actual ingress controller that is able to uunderstand the ingress object and do the complex routing to the website pages
+
+    Let's install the simplest Nginx controller
+    ```bash
+    kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/kind/deploy.yaml
+    ```
 * To test how ingress work we need to first apply the ingress resource
     ```bash
     kubectl apply -f ingress.yaml
@@ -537,13 +760,15 @@ We will follow the same automation using Makefile, Let's walk step by step
 
 * Let's install Helm on the Ubuntu 22.04 VM using snap via Makfile rule
     ```make
-    #!/usr/bin/env make
+     #!/usr/bin/env make
 
-    .PHONY: run_website stop_website install_kind install_kubectl \
-            create_kind_cluster create_docker_registry create_kind_cluster \
-            create_kind_cluster_with_registry connect_registry_to_kind_network \
-            connect_registry_to_kind delete_kind_cluster delete_docker_registry \
-            install_helm_ubuntu
+    .PHONY: clean_containers run_website stop_website install_kind install_kubectl create_kind_cluster \
+            create_docker_registry connect_registry_to_kind_network  connect_registry_to_kind \
+            create_kind_cluster_with_registry delete_kind_cluster delete_docker_registry \
+            install_helm_ubuntu 
+
+    clean_containers:
+	    docker rm -f $$(docker ps -a -q)
 
     run_website:
 	    docker build -t explorecalifornia-image . && \
@@ -558,17 +783,7 @@ We will follow the same automation using Makefile, Let's walk step by step
 		    sudo mv ./kind /usr/local/bin/kind
 
     install_kubectl:
-	    curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.30/deb/Release.key | sudo gpg --dearmor --yes -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg; \
-        sudo chmod 644 /etc/apt/keyrings/kubernetes-apt-keyring.gpg; \
-	    echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.30/deb/ /' | sudo tee /etc/apt/sources.list.d/kubernetes.list; \
-        sudo chmod 644 /etc/apt/sources.list.d/kubernetes.list; \
-	    sudo apt update && \
-		    sudo apt install -y kubectl; \
-	    sudo cp -v /usr/bin/kubectl /usr/local/bin/kubectl
-
-    create_kind_cluster:
-        kind create cluster --name explorecalifornia-cluster && \
-            kubectl get nodes
+	    sudo snap install kubectl --classic
 
     create_docker_registry:
 	    if ! docker ps | grep -q 'local-registry'; \
@@ -596,9 +811,22 @@ We will follow the same automation using Makefile, Let's walk step by step
 	    docker stop local-registry && docker rm local-registry
     
     install_helm_ubuntu:
-	    sudo snap install helm --classic
+	    sudo apt install -y snapd && \
+            sudo snap install helm --classic
     ```
 
+    Let's use make to install helm using the new rule ```install_helm_ubuntu```
+    ```bash
+    $ make install_helm_ubuntu
+    sudo apt install -y snapd && \
+            sudo snap install helm --classic
+    Reading package lists... Done
+    Building dependency tree... Done
+    Reading state information... Done
+    snapd is already the newest version (2.61.3+22.04).
+    0 upgraded, 0 newly installed, 0 to remove and 243 not upgraded.
+    helm 3.14.4 from Snapcrafters✪ installed
+    ```
 * Let's create a chart, any Helm chart should have the below structure
         
         
@@ -635,7 +863,7 @@ We will follow the same automation using Makefile, Let's walk step by step
 
 * Create the chart's values.yaml file containing needed values to be replaced in the website deployment
     ```bash
-    vim chart/values.yaml
+    vim values.yaml
     ```
 
     ```yaml
@@ -649,7 +877,7 @@ We will follow the same automation using Makefile, Let's walk step by step
 
 * Validate the chart to see if there is a n error
     ```bash
-    helm show all ./chart
+    helm show all .
     ```
 
 * Templatize the deployment by replaving the fixed values in the deployment, service and ingress by helm variables added to the values.yaml file
@@ -667,25 +895,21 @@ We will follow the same automation using Makefile, Let's walk step by step
       selector:
         matchLabels:
           app: {{ .Values.appName }}
-      strategy: {}
       template:
         metadata:
           labels:
             app: {{ .Values.appName }}
         spec:
-          imagePullSecrets:
-            - name: {{ .Values.imagePullSecretName }}
           containers:
           - image: {{ .Values.imageName }}
-            name: {{ .Values.appName }}-{{ randAlpha 10 | lower }}
+            name: {{ .Values.appName }}
             ports:
               - containerPort: 80
-            resources: {}
     ```
 
     service.yaml should look like below:
     ```yaml
-        apiVersion: v1
+    apiVersion: v1
     kind: Service
     metadata:
       creationTimestamp: null
@@ -701,9 +925,6 @@ We will follow the same automation using Makefile, Let's walk step by step
       selector:
         app: {{ .Values.appName }}
       type: ClusterIP
-    status:
-      loadBalancer: {}
-
     ```
 
     Ingress resource
@@ -736,13 +957,15 @@ We will follow the same automation using Makefile, Let's walk step by step
 
 * Let's add the chart helm install to our Makefile
     ```make
-    #!/usr/bin/env make
+     #!/usr/bin/env make
 
-    .PHONY: run_website stop_website install_kind install_kubectl \
-            create_kind_cluster create_docker_registry create_kind_cluster \
-            create_kind_cluster_with_registry connect_registry_to_kind_network \
-            connect_registry_to_kind delete_kind_cluster delete_docker_registry \
-            install_helm_ubuntu
+    .PHONY: clean_containers run_website stop_website install_kind install_kubectl create_kind_cluster \
+            create_docker_registry connect_registry_to_kind_network  connect_registry_to_kind \
+            create_kind_cluster_with_registry delete_kind_cluster delete_docker_registry \
+            install_helm_ubuntu install_app_helm
+
+    clean_containers:
+	    docker rm -f $$(docker ps -a -q)
 
     run_website:
 	    docker build -t explorecalifornia-image . && \
@@ -757,17 +980,7 @@ We will follow the same automation using Makefile, Let's walk step by step
 		    sudo mv ./kind /usr/local/bin/kind
 
     install_kubectl:
-	    curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.30/deb/Release.key | sudo gpg --dearmor --yes -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg; \
-        sudo chmod 644 /etc/apt/keyrings/kubernetes-apt-keyring.gpg; \
-	    echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.30/deb/ /' | sudo tee /etc/apt/sources.list.d/kubernetes.list; \
-        sudo chmod 644 /etc/apt/sources.list.d/kubernetes.list; \
-	    sudo apt update && \
-		    sudo apt install -y kubectl; \
-	    sudo cp -v /usr/bin/kubectl /usr/local/bin/kubectl
-
-    create_kind_cluster:
-        kind create cluster --name explorecalifornia-cluster && \
-            kubectl get nodes
+	    sudo snap install kubectl --classic
 
     create_docker_registry:
 	    if ! docker ps | grep -q 'local-registry'; \
@@ -795,7 +1008,8 @@ We will follow the same automation using Makefile, Let's walk step by step
 	    docker stop local-registry && docker rm local-registry
     
     install_helm_ubuntu:
-	    sudo snap install helm --classic
+	    sudo apt install -y snapd && \
+            sudo snap install helm --classic
 
     install_app_helm: install_helm_ubuntu
 	    helm upgrade --atomic --install explore-california-website ./chart
@@ -803,4 +1017,43 @@ We will follow the same automation using Makefile, Let's walk step by step
 
     > We are using helm upgrade in order to enabling chart modification and versioning instead of introducing conflicting helm install commands
 
-* 
+* Before trying to deploy the Helm chart let's cleanup the current deployment 
+    ```bash
+    kubectl delete all -l app=explorecalifornia-dep
+    kubectl delete ingress explorecalifornia-ing
+    ```
+
+* Let's test the new make rule ```install_app_helm```
+    ```bash
+    $ make install_app_helm
+    sudo apt install -y snapd && \
+            sudo snap install helm --classic
+    Reading package lists... Done
+    Building dependency tree... Done
+    Reading state information... Done
+    snapd is already the newest version (2.61.3+22.04).
+    0 upgraded, 0 newly installed, 0 to remove and 243 not upgraded.
+    snap "helm" is already installed, see 'snap help refresh'
+    helm upgrade --atomic --install explore-california-website ./chart
+    Release "explore-california-website" does not exist. Installing it now.
+    NAME: explore-california-website
+    LAST DEPLOYED: Sat Apr 27 18:29:55 2024
+    NAMESPACE: default
+    STATUS: deployed
+    REVISION: 1
+    TEST SUITE: None
+
+    $ helm list -A
+    NAME                            NAMESPACE       REVISION        UPDATED                                 STATUS          CHART                                   APP VERSION
+    explore-california-website      default         1               2024-04-27 18:29:55.811618069 +0000 UTC deployed        explore-california-website-1.0.0        1.0.0 
+
+    $ kubectl get po -o wide
+    NAME                                     READY   STATUS    RESTARTS   AGE   IP            NODE                                  NOMINATED NODE   READINESS GATES
+    explorecalifornia-com-64bcfc77f7-8z8cf   1/1     Running   0          49s   10.244.0.16   explorecalifornia.com-control-plane   <none>           <none>
+    explorecalifornia-com-64bcfc77f7-9kc45   1/1     Running   0          49s   10.244.0.17   explorecalifornia.com-control-plane   <none>           <none>
+
+    $ kubectl get ingress
+    NAME                    CLASS    HOSTS                   ADDRESS     PORTS   AGE
+    explorecalifornia-com   <none>   explorecalifornia.com   localhost   80      107s
+    ```
+
